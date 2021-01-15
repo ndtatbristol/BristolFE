@@ -61,32 +61,13 @@ applied_stress = -7e8; %should give displacement of approx -block_depth / 100
     end
 
 %--------------------------------------------------------------------------
-%Manually generate the mesh to obtain (at the end of this section)
-%   "nodes": an m x 2 matrix of (x,y) coordinates for the m nodes
-%   "elements": an n x 3 matrix of nodes at 3 corners of n triangular elements
+%Generate the mesh to obtain (at the end of this section)
+corner_nodes = [
+    0, 0
+    block_length, block_depth];
 
-%Work out how many nodes are needed in x and y
-nodes_in_x_direction = ceil(block_length / element_size) + 1;
-nodes_in_y_direction = ceil(block_depth / element_size) + 1;
+[nodes, elements] = fn_rectangular_structured_mesh(corner_nodes, element_size);
 
-%Work out nodal coordinates
-x = linspace(0, block_length, nodes_in_x_direction);
-y = linspace(0, block_depth, nodes_in_y_direction);
-[node_x_positions, node_y_positions] = meshgrid(x, y);
-
-%Work out node numbers associated with each element (a bit fiddly as you can see) 
-node_numbers = reshape([1:numel(node_x_positions)], nodes_in_y_direction, nodes_in_x_direction);
-element_node1a = node_numbers(1:end-1, 1:end-1);
-element_node2a = node_numbers(2:end, 2:end);
-element_node3a = node_numbers(2:end, 1:end-1);
-element_node1b = node_numbers(1:end-1, 1:end-1);
-element_node2b = node_numbers(1:end-1, 2:end);
-element_node3b = node_numbers(2:end, 2:end);
-
-%Final m x 2 matrix of x and y coordinates for each node
-nodes = [node_x_positions(:), node_y_positions(:)];
-%Final n x 3 matrix of 3 node numbers for each element
-elements = [[element_node1a(:), element_node2a(:), element_node3a(:)];[element_node1b(:), element_node2b(:), element_node3b(:)]];
 %--------------------------------------------------------------------------
 %A few other things to be defined to complete mesh definition 
 

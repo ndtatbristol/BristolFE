@@ -1,4 +1,4 @@
-function [K, M, Q] = fn_build_global_matrices(nodes, elements, element_materials, materials)
+function [K, M, Q, global_matrix_nodes, global_matrix_dofs] = fn_build_global_matrices(nodes, elements, element_materials, materials)
 %SUMMARY
 %   Creates global matrices from mesh definitions
 %INPUTS
@@ -16,6 +16,8 @@ function [K, M, Q] = fn_build_global_matrices(nodes, elements, element_materials
 %OUTPUTS
 %   K, M - global 2n x 2n stiffness and mass matrices
 %   Q - 3m x 2n matrix to transform displacements into stresses
+%   global_matrix_nodes, global_matrix_dofs - 2n element vectors of node and dof indices
+%   for rows/cols in global matrices
 %--------------------------------------------------------------------------
 
 %hard-coded values - DOF per node and nodes per element
@@ -51,10 +53,10 @@ dof_per_node = length(dofs);
 no_nds = size(nodes,1);
 no_els = size(elements,1);
 tmp = repmat([1:no_nds], dof_per_node, 1);
-global_matrix_node = tmp(:);
+global_matrix_nodes = tmp(:);
 tmp = repmat(dofs, 1, no_nds);
-global_matrix_dof = tmp(:);
-total_dof = length(global_matrix_node);
+global_matrix_dofs = tmp(:);
+total_dof = length(global_matrix_nodes);
 
 %build all element matrices
 
