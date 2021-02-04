@@ -102,7 +102,8 @@ for ti = 1:length(time)
     %Show how far through calculation is
     fprintf('Time step %i of %i\n', ti, length(time));
 end
-disp(sprintf('    ... completed in %.2f secs', etime(clock, t1)));
+t2 = etime(clock, t1);
+fprintf('    ... completed in %.2f secs\n', t2);
 
 
 end

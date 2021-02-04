@@ -1,7 +1,8 @@
 %Example time-domain simulation of elastic waves using BristolFE
+%See example_time_domain_convergence_test.m for more detailed comments
 restoredefaultpath;
 clear; 
-% close all;
+close all;
 
 %Material properties (SI units used throughout)
 long_vel = 6000;
@@ -9,17 +10,23 @@ shear_vel = 3000;
 density = 3700;
 
 stress_state = 'plane strain';
-% stress_state = 'plane stress';
 structured_mesh = 1;
 use_diagonal_lumped_mass_matrix = 1;
-dof_per_node = 2; %DOF per node - usually this will be two, but in theory you could have 3 even with a 2D model if you wanted to (e.g. for out-of-plane SH waves) 
 
+%Define shape of a 2D structure - a section through a plate of specified
+%thickness with width 2*thickness
 thickness = 5e-3;
+corner_points = [
+    -1, 0
+    -1, 1
+    1, 1
+    1, 0
+    ] * thickness;
 
 %Details of excitation - a Hanning-windowed toneburst
 centre_freq = 5e6;
 number_of_cycles = 5;
-forcing_point = [0, 0] * thickness; %centre of bottom of L-shape
+forcing_point = [0, 0] * thickness; %centre of bottom of model
 forcing_dofs = 2; %vertical forcing
 
 %Element size determined by wavelength
@@ -28,21 +35,12 @@ elements_per_wavelength = 20;
 %Safety factor for time-steps
 safety_factor = 3;
 
-
 %How long to run model for - e.g. 20 x period of excitation
 max_time = 1 / centre_freq * 10;
 
-%Define shape of a 2D structure - a section through a plate of specified
-%thickness
-corner_points = [
-    -1, 0
-    -1, 1
-    1, 1
-    1, 0
-    ] * thickness;
-
-%Field output (displacments at all nodes, but not every time step
-field_output_every_n_frames = 5;
+%Field output (displacements at all nodes, but not every time step - use 
+%field_output_every_n_frames = inf to prevent field output).
+field_output_every_n_frames = inf;
 
 %Nodes/directions where time-history will be recorded (displacements at
 %every time-step)
@@ -50,6 +48,7 @@ history_point = [0, 0.5] * thickness; %halfway through plate
 history_dofs = 2;
 history_dir = 2;
 
+%END OF INPUTS
 %--------------------------------------------------------------------------
 
 %Engineering constants from velocities and density
@@ -86,7 +85,7 @@ forcing_nodes = fn_find_node_at_point(nodes, forcing_point, inf);
 
 history_nodes = fn_find_node_at_point(nodes, history_point, inf);
 
-%Display mesh and excitation signal
+%Display mesh
 figure;
 display_options.node_sets_to_plot(1).nd = forcing_nodes;
 display_options.node_sets_to_plot(1).col = 'r.';
@@ -95,6 +94,7 @@ display_options.node_sets_to_plot(2).col = 'g.';
 fn_display_result(nodes, elements, display_options);
 title('Original mesh');
 
+%Display excitation signal
 figure;
 plot(time, forcing_functions);
 title('Excitation signal');
@@ -119,6 +119,7 @@ fprintf('Size of model: %i DOF\n', size(K, 1));
 %SECOND BIT OF FE CALCULATION - Time marching bit
 [history_output, field_output] = fn_explicit_dynamic_solver(K, M, global_matrix_nodes, global_matrix_dofs, time, forcing_nodes, forcing_dofs, forcing_functions, history_nodes, history_dofs, field_output_every_n_frames, use_diagonal_lumped_mass_matrix);
 
+%Display history output
 if ~isempty(history_output)
     figure;
     plot(time, history_output);
@@ -128,6 +129,7 @@ if ~isempty(history_output)
     xlabel('Time (s)');
 end
 
+%Animate field output
 if ~isempty(field_output)
     stress = Q * field_output;
     figure;
