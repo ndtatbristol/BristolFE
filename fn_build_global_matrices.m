@@ -1,4 +1,4 @@
-function [K, M, Q, global_matrix_nodes, global_matrix_dofs] = fn_build_global_matrices(nodes, elements, element_materials, materials)
+function [K, M, Q, global_matrix_nodes, global_matrix_dofs] = fn_build_global_matrices(nodes, elements, element_materials, materials, varargin)
 %SUMMARY
 %   Creates global matrices from mesh definitions
 %INPUTS
@@ -12,18 +12,34 @@ function [K, M, Q, global_matrix_nodes, global_matrix_dofs] = fn_build_global_ma
 %   materials - p x 1 structured variable of materials with fields
 %       materials(i).name - string giving name of material
 %       materials(i).density - density of material
-%       materials(i).stiffness_matrix - 3x3 stiffness matrix of material
+%       materials(i).stiffness_matrix - 3x3 or 6x6 stiffness matrix of 
+%       material. 6x6 size us needed for model_dof='3';
+%   [model_dof - string that is either '12' (default) or '3']
 %OUTPUTS
-%   K, M - global 2n x 2n stiffness and mass matrices
-%   Q - 3m x 2n matrix to transform displacements into stresses
-%   global_matrix_nodes, global_matrix_dofs - 2n element vectors of node and dof indices
-%   for rows/cols in global matrices
+%   K, M - global (d*n) x (d*n) stiffness and mass matrices, where d is no
+%   of DOF at each node
+%   Q - (e*m) x (d*n) matrix to transform displacements into stresses,
+%   where e is number of stress components in each element
 %--------------------------------------------------------------------------
 
+
+%switch depending on DOF
+if isempty(varargin)
+    model_dof = '12';
+else
+    model_dof = varargin{1};
+end
+
 %hard-coded values - DOF per node and nodes per element
-dofs = [1;2];
+switch model_dof
+    case '12'
+        dofs = [1;2];
+        no_stress_components = 3;
+    case '3'
+        dofs = 3;
+        no_stress_components = 2;
+end
 nds_per_el = 3;
-no_stress_components = 3;
 
 %check inputs
 if size(nodes, 2) ~= 2
@@ -62,8 +78,12 @@ total_dof = length(global_matrix_nodes);
 
 %there should be something else in here to check element types and only do
 %els of same type together
-[K_flat, M_flat, Q_flat] = fn_get_element_matrices(nodes, elements, element_materials, materials);
-
+switch model_dof
+    case '12'
+        [K_flat, M_flat, Q_flat] = fn_get_element_matrices(nodes, elements, element_materials, materials);
+    case '3'
+        [K_flat, M_flat, Q_flat] = fn_get_element_matrices_scalar(nodes, elements, element_materials, materials);
+end
 disp('Global matrices ...');
 t1 = clock;
 
@@ -141,6 +161,9 @@ for ii = 1:3
     y(ii, :) = nodes(elements(:, ii), 2);
 end
 for ii = 1:length(materials)
+    if size(materials(ii).stiffness_matrix, 1) ~= 3 && size(materials(ii).stiffness_matrix, 2) ~= 3
+        error('Material stiffness matrices must be 3x3 for elastic elements elements')
+    end
     materials(ii).stiffness_matrix = materials(ii).stiffness_matrix(:);
 end
 
@@ -223,5 +246,85 @@ Q(12, :) = (D(6, :) .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (D(9, :) .* (y(1, :
 Q(15, :) = (D(3, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)  -  (D(9, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :);
 Q(18, :) = (D(9, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)  -  (D(6, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :);
 
+disp(sprintf('    ... built in %.2f secs', etime(clock, t1)));
+end
+
+function [K, M, Q] = fn_get_element_matrices_scalar(nodes, elements, element_materials, materials)
+%Cutdown version of SAFE code for UG FE - constant strain triangles, 2 DOF
+%per node
+
+disp('Element matrices ...');
+t1 = clock;
+
+rho = [materials(element_materials).density];
+
+x = zeros(3, size(elements,1));
+y = zeros(3, size(elements,1));
+D = zeros(36, size(elements,1));
+
+for ii = 1:3
+    x(ii, :) = nodes(elements(:, ii), 1);
+    y(ii, :) = nodes(elements(:, ii), 2);
+end
+
+for ii = 1:length(materials)
+    if ~isscalar(materials(ii).stiffness_matrix)
+        error('Material stiffness matrices must be 1x1 for scalar elements');
+    end
+%     materials(ii).stiffness_matrix = materials(ii).stiffness_matrix(:);
+end
+
+G = [materials(element_materials).stiffness_matrix];
+% J = abs(x(1, :) .* y(2, :)  -  x(2, :) .* y(1, :)  -  x(1, :) .* y(3, :)  +  x(3, :) .* y(1, :)  +  x(2, :) .* y(3, :)  -  x(3, :) .* y(2, :));
+% K = zeros(9, length(J));
+% K(1, :) = (((D(1, :) .* (x(2, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(2, :)  -  y(3, :))) ./ J(1, :)) .* (x(2, :)  -  x(3, :))) ./ 2  -  (((D(1, :) .* (x(2, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(2, :)  -  y(3, :))) ./ J(1, :)) .* (y(2, :)  -  y(3, :))) ./ 2;
+% K(4, :) = (((D(1, :) .* (x(2, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(2, :)  -  y(3, :))) ./ J(1, :)) .* (y(1, :)  -  y(3, :))) ./ 2  -  (((D(1, :) .* (x(2, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(2, :)  -  y(3, :))) ./ J(1, :)) .* (x(1, :)  -  x(3, :))) ./ 2;
+% K(7, :) = (((D(1, :) .* (x(2, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(2, :)  -  y(3, :))) ./ J(1, :)) .* (x(1, :)  -  x(2, :))) ./ 2  -  (((D(1, :) .* (x(2, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(2, :)  -  y(3, :))) ./ J(1, :)) .* (y(1, :)  -  y(2, :))) ./ 2;
+% K(2, :) = (((D(1, :) .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(3, :))) ./ J(1, :)) .* (y(2, :)  -  y(3, :))) ./ 2  -  (((D(1, :) .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(3, :))) ./ J(1, :)) .* (x(2, :)  -  x(3, :))) ./ 2;
+% K(5, :) = (((D(1, :) .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(3, :))) ./ J(1, :)) .* (x(1, :)  -  x(3, :))) ./ 2  -  (((D(1, :) .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(3, :))) ./ J(1, :)) .* (y(1, :)  -  y(3, :))) ./ 2;
+% K(8, :) = (((D(1, :) .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(3, :))) ./ J(1, :)) .* (y(1, :)  -  y(2, :))) ./ 2  -  (((D(1, :) .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(3, :))) ./ J(1, :)) .* (x(1, :)  -  x(2, :))) ./ 2;
+% K(3, :) = (((D(1, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)) .* (x(2, :)  -  x(3, :))) ./ 2  -  (((D(1, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)) .* (y(2, :)  -  y(3, :))) ./ 2;
+% K(6, :) = (((D(1, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)) .* (y(1, :)  -  y(3, :))) ./ 2  -  (((D(1, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)) .* (x(1, :)  -  x(3, :))) ./ 2;
+% K(9, :) = (((D(1, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)) .* (x(1, :)  -  x(2, :))) ./ 2  -  (((D(1, :) .* (x(1, :)  -  x(2, :))) ./ J(1, :)  -  (D(1, :) .* (y(1, :)  -  y(2, :))) ./ J(1, :)) .* (y(1, :)  -  y(2, :))) ./ 2;
+% M = zeros(9, length(J));
+% M(1, :) = (J(1, :) .* rho(1, :)) ./ 12;
+% M(4, :) = (J(1, :) .* rho(1, :)) ./ 24;
+% M(7, :) = (J(1, :) .* rho(1, :)) ./ 24;
+% M(2, :) = (J(1, :) .* rho(1, :)) ./ 24;
+% M(5, :) = (J(1, :) .* rho(1, :)) ./ 12;
+% M(8, :) = (J(1, :) .* rho(1, :)) ./ 24;
+% M(3, :) = (J(1, :) .* rho(1, :)) ./ 24;
+% M(6, :) = (J(1, :) .* rho(1, :)) ./ 24;
+% M(9, :) = (J(1, :) .* rho(1, :)) ./ 12;
+J = x(1, :) .* y(2, :)  -  x(2, :) .* y(1, :)  -  x(1, :) .* y(3, :)  +  x(3, :) .* y(1, :)  +  x(2, :) .* y(3, :)  -  x(3, :) .* y(2, :);
+K = zeros(9, length(J));
+K(1, :) = (G .* (x(2, :)  -  x(3, :)) .^ 2) ./ (2 .* J(1, :))  +  (G .* (y(2, :)  -  y(3, :)) .^ 2) ./ (2 .* J(1, :));
+K(2, :) =  -  (G .* (x(1, :)  -  x(3, :)) .* (x(2, :)  -  x(3, :))) ./ (2 .* J(1, :))  -  (G .* (y(1, :)  -  y(3, :)) .* (y(2, :)  -  y(3, :))) ./ (2 .* J(1, :));
+K(3, :) = (G .* (x(1, :)  -  x(2, :)) .* (x(2, :)  -  x(3, :))) ./ (2 .* J(1, :))  +  (G .* (y(1, :)  -  y(2, :)) .* (y(2, :)  -  y(3, :))) ./ (2 .* J(1, :));
+K(4, :) =  -  (G .* (x(1, :)  -  x(3, :)) .* (x(2, :)  -  x(3, :))) ./ (2 .* J(1, :))  -  (G .* (y(1, :)  -  y(3, :)) .* (y(2, :)  -  y(3, :))) ./ (2 .* J(1, :));
+K(5, :) = (G .* (x(1, :)  -  x(3, :)) .^ 2) ./ (2 .* J(1, :))  +  (G .* (y(1, :)  -  y(3, :)) .^ 2) ./ (2 .* J(1, :));
+K(6, :) =  -  (G .* (x(1, :)  -  x(2, :)) .* (x(1, :)  -  x(3, :))) ./ (2 .* J(1, :))  -  (G .* (y(1, :)  -  y(2, :)) .* (y(1, :)  -  y(3, :))) ./ (2 .* J(1, :));
+K(7, :) = (G .* (x(1, :)  -  x(2, :)) .* (x(2, :)  -  x(3, :))) ./ (2 .* J(1, :))  +  (G .* (y(1, :)  -  y(2, :)) .* (y(2, :)  -  y(3, :))) ./ (2 .* J(1, :));
+K(8, :) =  -  (G .* (x(1, :)  -  x(2, :)) .* (x(1, :)  -  x(3, :))) ./ (2 .* J(1, :))  -  (G .* (y(1, :)  -  y(2, :)) .* (y(1, :)  -  y(3, :))) ./ (2 .* J(1, :));
+K(9, :) = (G .* (x(1, :)  -  x(2, :)) .^ 2) ./ (2 .* J(1, :))  +  (G .* (y(1, :)  -  y(2, :)) .^ 2) ./ (2 .* J(1, :));
+M = zeros(9, length(J));
+M(1, :) = (J(1, :) .* rho(1, :)) ./ 12;
+M(2, :) = (J(1, :) .* rho(1, :)) ./ 24;
+M(3, :) = (J(1, :) .* rho(1, :)) ./ 24;
+M(4, :) = (J(1, :) .* rho(1, :)) ./ 24;
+M(5, :) = (J(1, :) .* rho(1, :)) ./ 12;
+M(6, :) = (J(1, :) .* rho(1, :)) ./ 24;
+M(7, :) = (J(1, :) .* rho(1, :)) ./ 24;
+M(8, :) = (J(1, :) .* rho(1, :)) ./ 24;
+M(9, :) = (J(1, :) .* rho(1, :)) ./ 12;
+
+%these need checking
+Q = zeros(6, length(J));
+Q(1, :) = (G .* (y(2, :)  -  y(3, :))) ./ J(1, :)  -  (G .* (x(2, :)  -  x(3, :))) ./ J(1, :);
+Q(3, :) = (G .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (G .* (y(1, :)  -  y(3, :))) ./ J(1, :);
+Q(5, :) = (G .* (y(1, :)  -  y(2, :))) ./ J(1, :)  -  (G .* (x(1, :)  -  x(2, :))) ./ J(1, :);
+Q(2, :) = (G .* (y(2, :)  -  y(3, :))) ./ J(1, :)  -  (G .* (x(2, :)  -  x(3, :))) ./ J(1, :);
+Q(4, :) = (G .* (x(1, :)  -  x(3, :))) ./ J(1, :)  -  (G .* (y(1, :)  -  y(3, :))) ./ J(1, :);
+Q(6, :) = (G .* (y(1, :)  -  y(2, :))) ./ J(1, :)  -  (G .* (x(1, :)  -  x(2, :))) ./ J(1, :);
 disp(sprintf('    ... built in %.2f secs', etime(clock, t1)));
 end
