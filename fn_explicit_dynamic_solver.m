@@ -1,4 +1,4 @@
-function [history_output, field_output] = fn_explicit_dynamic_solver(K, M, global_matrix_nodes, global_matrix_dofs, time, forcing_nodes, forcing_dofs, forcing_functions, history_nodes, history_dofs, field_output_every_n_frames, use_diagonal_lumped_mass_matrix)
+function [history_output, field_output] = fn_explicit_dynamic_solver(K, M, global_matrix_nodes, global_matrix_dofs, time, forcing_nodes, forcing_dofs, forcing_functions, history_nodes, history_dofs, field_output_every_n_frames, use_diagonal_lumped_mass_matrix, varargin)
 %SUMMARY
 %   Solves explicit dynamic FE problem given applied displacements or
 %   applied forces
@@ -27,6 +27,19 @@ function [history_output, field_output] = fn_explicit_dynamic_solver(K, M, globa
 %   history_output - q x n matrix of time histories
 
 %--------------------------------------------------------------------------
+
+if isempty(varargin)
+	use_gpu_if_present = 1;
+else
+	use_gpu_if_present = varargin{1};
+end
+
+gpu_present = fn_test_if_gpu_present_and_working;
+if use_gpu_if_present && gpu_present
+	use_gpu = 1;
+else
+	use_gpu = 0;
+end
 
 %Error checks
 if size(K,1) ~= size(K, 2)
@@ -63,15 +76,38 @@ if use_diagonal_lumped_mass_matrix
     inv_M = spdiags(1 ./ tmp.', 0, size(K,1), size(K,2));
 end
 
-%Main time marching loop
-time_step = time(2) - time(1);
 u_previous = zeros(size(K, 1), 1);
 u_dot_previous = zeros(size(K, 1), 1);
+use_gpu
+if use_gpu
+	K = gpuArray(K);
+	u_previous = gpuArray(u_previous);
+	u_dot_previous = gpuArray(u_dot_previous);
+	if use_diagonal_lumped_mass_matrix
+		inv_M = gpuArray(inv_M);
+	else
+		M = gpuArray(M);
+	end
+	if ~history_indices
+		history_indices = gpuArray(history_indices);
+		history_output = gpuArray(history_output);
+	end
+	if ~isinf(field_output_every_n_frames)
+		field_output = gpuArray(field_output);
+	end
+end
+
+%Main time marching loop
+time_step = time(2) - time(1);
 t1 = clock;
 for ti = 1:length(time)
     %set force at forcing node equal to excitation signal at this instant
     %in time
-    f = zeros(size(K, 1), 1);
+	if use_gpu
+		f = gpuArray.zeros(size(K, 1), 1);
+	else
+		f = zeros(size(K, 1), 1);
+	end
     if ti <= size(forcing_functions, 2)
         f(forcing_indices) = forcing_functions(:, ti);
     end
@@ -102,6 +138,15 @@ for ti = 1:length(time)
     %Show how far through calculation is
     fprintf('Time step %i of %i\n', ti, length(time));
 end
+if use_gpu
+	if ~history_indices
+		history_output = gather(history_output);
+	end
+	if ~isinf(field_output_every_n_frames)
+		field_output = gather(field_output);
+	end
+end
+
 t2 = etime(clock, t1);
 fprintf('    ... completed in %.2f secs\n', t2);
 

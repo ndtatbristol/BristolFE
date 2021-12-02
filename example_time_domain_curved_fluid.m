@@ -22,7 +22,7 @@ number_of_cycles = 5;
 forcing_point = [0, -inner_radius]; %centre of ID at bottom of model
 
 %Element size determined by wavelength
-elements_per_wavelength = 10;
+elements_per_wavelength = 20;
 
 %Safety factor for time-steps
 safety_factor = 3;
