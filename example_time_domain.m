@@ -2,7 +2,7 @@
 %See example_time_domain_convergence_test.m for more detailed comments
 restoredefaultpath;
 clear; 
-close all;
+% close all;
 
 %Material properties (SI units used throughout)
 long_vel = 6000;
@@ -11,11 +11,14 @@ density = 3700;
 
 stress_state = 'plane strain';
 structured_mesh = 1;
+% mesh_type = 'structured (triangles in rectangles)';
+mesh_type = 'structured (triangles in hexagons)';
+% mesh_type = 'unstructured';
 use_diagonal_lumped_mass_matrix = 1;
 
 %Define shape of a 2D structure - a section through a plate of specified
 %thickness with width 2*thickness
-thickness = 10e-3;
+thickness = 20e-3;
 corner_points = [
     -1, 0
     -1, 1
@@ -30,13 +33,13 @@ forcing_point = [0, 0] * thickness; %centre of bottom of model
 forcing_dofs = 2; %vertical forcing
 
 %Element size determined by wavelength
-elements_per_wavelength = 20;
+elements_per_wavelength = 10;
 
 %Safety factor for time-steps
 safety_factor = 3;
 
 %How long to run model for - e.g. 20 x period of excitation
-max_time = 1 / centre_freq * 10;
+max_time = 1 / centre_freq * 30;
 
 %Field output (displacements at all nodes, but not every time step - use 
 %field_output_every_n_frames = inf to prevent field output).
@@ -66,13 +69,16 @@ element_size = wavelength / elements_per_wavelength;
 time_step = element_size / wave_vel / safety_factor;
 
 %Mesh shape with triangular elements of appropriate size
-if structured_mesh
-    [nodes, elements] = fn_rectangular_structured_mesh(corner_points([1,3],:), element_size);
-else
-    addpath('Mesh2d v24');
-    hdata.hmax = element_size;
-    options.output = false;
-    [nodes, elements] = mesh2d(corner_points, [], hdata, options);
+switch mesh_type
+    case 'structured (triangles in rectangles)'
+        [nodes, elements] = fn_rectangular_structured_mesh(corner_points([1,3],:), element_size);
+    case 'structured (triangles in hexagons)'
+        [nodes, elements] = fn_hexagonal_structured_mesh(corner_points([1,3],:), element_size);
+    case 'unstructured'
+        addpath('Mesh2d v24');
+        hdata.hmax = element_size;
+        options.output = false;
+        [nodes, elements] = mesh2d(corner_points, [], hdata, options);
 end
 
 %Work out excitation signal
