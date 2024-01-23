@@ -8,12 +8,11 @@ close all;
 vel = 1500;
 density = 1000;
 
-structured_mesh = 0;
 use_diagonal_lumped_mass_matrix = 1;
 
 %Define shape of a 2D structure - a section through a plate of specified
 %thickness with width 2*thickness
-thickness = 10e-3;
+thickness = 5e-3;
 corner_points = [
     -1, 0
     -1, 1
@@ -49,10 +48,6 @@ history_point = [0, 0.5] * thickness; %halfway through plate
 %Engineering constants from velocities and density
 shear_modulus = vel ^ 2 * density;
 
-% [lambda, mu] = fn_lame_from_velocities_and_density(long_vel, shear_vel, density);
-% [youngs_modulus, poissons_ratio] = fn_youngs_from_lame(lambda, mu);
-
-
 %Work out required element size and time step (based on wavelength of bulk
 %longitudinal waves at centre frequency of excitation)
 % wave_vel = sqrt(youngs_modulus/density * (1-poissons_ratio) / (1+poissons_ratio) / (1-2*poissons_ratio)); %Textbook equation for bulk longitudinal wave speed
@@ -63,15 +58,7 @@ element_size = wavelength / elements_per_wavelength;
 time_step = element_size / vel / safety_factor;
 
 %Mesh shape with triangular elements of appropriate size
-if structured_mesh
-    [nodes, elements] = fn_rectangular_structured_mesh(corner_points([1,3],:), element_size);
-else
-%     addpath('Mesh2d v24');
-%     hdata.hmax = element_size;
-%     options.output = false;
-%     [nodes, elements] = mesh2d(corner_points, [], hdata, options);
-	
-end
+[nodes, elements] = fn_isometric_structured_mesh(corner_points([1,3],:), element_size);
 
 %Work out excitation signal
 time = [0: time_step: max_time];
@@ -132,8 +119,8 @@ if ~isempty(field_output)
     for i = 1:size(stress,2)
         display_options.element_edge_color = 'None';
         display_options.scale_factor = 1;
-        sigma_11 = stress(1:3:end, i);
-        sigma_22 = stress(2:3:end, i);
+        sigma_11 = stress(1:2:end, i);
+        sigma_22 = stress(2:2:end, i);
         element_colour = sqrt(sigma_11 .^ 2 + sigma_22 .^ 2);
         cla;
         fn_display_result(nodes, elements, display_options, zeros(size(nodes)), element_colour)
