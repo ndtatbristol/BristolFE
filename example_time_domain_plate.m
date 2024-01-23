@@ -9,7 +9,6 @@ close all;
 vel = 3000;
 density = 2700;
 
-structured_mesh = 1;
 use_diagonal_lumped_mass_matrix = 1;
 
 %Define shape of a 2D structure - a section through a plate of specified
@@ -39,7 +38,7 @@ max_time = 1 / centre_freq * 30;
 
 %Field output (displacements at all nodes, but not every time step - use 
 %field_output_every_n_frames = inf to prevent field output).
-field_output_every_n_frames = 5;
+field_output_every_n_frames = inf;
 
 %Nodes/directions where time-history will be recorded (displacements at
 %every time-step)
@@ -62,15 +61,7 @@ element_size = wavelength / elements_per_wavelength;
 time_step = element_size / vel / safety_factor;
 
 %Mesh shape with triangular elements of appropriate size
-if structured_mesh
-    [nodes, elements] = fn_rectangular_structured_mesh(corner_points([1,3],:), element_size);
-else
-    addpath('Mesh2d v24');
-    hdata.hmax = element_size;
-    options.output = false;
-    [nodes, elements] = mesh2d(corner_points, [], hdata, options);
-	
-end
+    [nodes, elements] = fn_isometric_structured_mesh(corner_points([1,3],:), element_size);
 
 %Work out excitation signal
 time = [0: time_step: max_time];
